@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -260,97 +258,6 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was created [%v]", lb.Deployment.Name))
 	}
 
-	return nil
-}
-
-//CreateRouter creates a router in the loadBalancer
-func (lb *LoadBalancer) CreateRouter(namespace string, rule string, service string, port int32) error {
-
-	lbLogger.Info(fmt.Sprintf("Creating  a router for service [%v] in namespace [%v], with rule [%v] and port [%v]", service, namespace, rule, port))
-	err := lb.loadConfig()
-	if err != nil {
-		lbLogger.Error(err, "Fatal, unable to create new router, problem with the loadbalancer configuration")
-		return err
-	}
-
-	rawconfig := lb.Config.Data[traefikConfigFileName]
-
-	var cfg *TraefikConfig
-	var url strings.Builder
-	var serviceFound bool = false
-	var routerFound bool = false
-
-	yaml.Unmarshal([]byte(rawconfig), &cfg)
-
-	if !strings.Contains(service, "@internal") {
-		url.WriteString("http://")
-		url.WriteString(service)
-		url.WriteString(".")
-		url.WriteString(namespace)
-		url.WriteString(".svc.cluster.local:")
-		if port != 0 {
-			url.WriteString(strconv.Itoa(int(port)))
-		} else {
-			url.WriteString(strconv.Itoa(80))
-		}
-	} else {
-		serviceFound = true
-	}
-
-	if !serviceFound {
-		for key := range cfg.Http.Services {
-			if key == service {
-				serviceFound = true
-				break
-			}
-		}
-	}
-
-	if !serviceFound {
-		if cfg.Http.Services == nil {
-			cfg.Http.Services = make(map[string]Service)
-		}
-		cfg.Http.Services[service] = Service{
-			LoadBalancer: TLoadBalancer{
-				Servers: []Server{{
-					URL: url.String(),
-				},
-				},
-				PassHostHeader: true,
-			},
-		}
-	}
-
-	for key := range cfg.Http.Routers {
-		if key == service {
-			routerFound = true
-			break
-		}
-	}
-
-	if !routerFound {
-		if cfg.Http.Routers == nil {
-			cfg.Http.Routers = make(map[string]Router)
-		}
-		cfg.Http.Routers[service] = Router{
-			Service:     service,
-			EntryPoints: []string{"http"},
-			Rule:        rule,
-		}
-	}
-
-	err = lb.writeConfig(*cfg, true)
-	if err != nil {
-		return err
-	}
-
-	err = lb.reloadDeployment()
-
-	if err != nil {
-		return err
-	}
-
-	lbLogger.Info(fmt.Sprintf("Configured router for %+v", service))
 	return nil
 }
 

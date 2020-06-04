@@ -143,7 +143,7 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 	// End of finalizer logic
 
 	// Define a new Pod object
-	deployment, service, routers := newDeploymentForCR(instance)
+	deployment, service, routers := getInstanceObjects(instance)
 
 	// Set Microservice instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
@@ -186,8 +186,7 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
-// newDeploymentForCR returns a busybox deployment with the same name/namespace as the cr
-func newDeploymentForCR(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *corev1.Service, map[int32]string) {
+func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *corev1.Service, map[int32]string) {
 	labels := map[string]string{
 		"app":      cr.Name,
 		"provider": "kom-operator",
@@ -261,7 +260,18 @@ func newDeploymentForCR(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 }
 
 func (r *ReconcileMicroservice) finalize(instance *komv1alpha1.Microservice) error {
-	log.Info("finalize instance ", "Namespace", instance.Namespace, "Name", instance.Name)
+	reqLogger := log.WithValues("Request.Namespace", instance.Namespace, "Request.Name", instance.Name)
+	reqLogger.Info("finalize instance ")
+	_, service, routers := getInstanceObjects(instance)
+	if service != nil {
+		for pNumber, rule := range routers {
+			err := (*process.GetInstance()).RemoveRouter(service.Namespace, rule, service.Name, pNumber)
+			if err != nil {
+				reqLogger.Error(err, "Error removing loadbalancer route")
+				return err
+			}
+		}
+	}
 	return nil
 }
 
