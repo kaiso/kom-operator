@@ -6,6 +6,7 @@ import (
 
 	komv1alpha1 "github.com/kaiso/kom-operator/pkg/apis/kom/v1alpha1"
 	"github.com/kaiso/kom-operator/pkg/process"
+	"github.com/kaiso/kom-operator/version"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -188,15 +189,22 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 // newDeploymentForCR returns a busybox deployment with the same name/namespace as the cr
 func newDeploymentForCR(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *corev1.Service, map[int32]string) {
 	labels := map[string]string{
-		"app": cr.Name,
+		"app":      cr.Name,
+		"provider": "kom-operator",
+	}
+
+	annotations := map[string]string{
+		"creator": "kom-operator.kaiso.github.io/" + version.Version,
 	}
 
 	replicas := cr.Spec.Autoscaling.Min
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name,
-			Namespace: cr.Namespace,
+			Name:        cr.Name,
+			Namespace:   cr.Namespace,
+			Annotations: annotations,
+			Labels:      labels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -222,8 +230,10 @@ func newDeploymentForCR(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 	if size != 0 {
 		service := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      cr.Name,
-				Namespace: cr.Namespace,
+				Name:        cr.Name,
+				Namespace:   cr.Namespace,
+				Annotations: annotations,
+				Labels:      labels,
 			},
 			Spec: corev1.ServiceSpec{
 				Ports:    []corev1.ServicePort{},

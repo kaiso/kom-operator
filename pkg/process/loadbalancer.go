@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	"github.com/kaiso/kom-operator/version"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -44,6 +45,9 @@ const (
 var lbLogger = logf.Log.WithName("loadbalancer")
 var instance *LoadBalancer
 var once sync.Once
+var annotations = map[string]string{
+	"creator": "kom-operator.kaiso.github.io/" + version.Version,
+}
 
 //GetInstance returns the LoadBalancer singleton
 func GetInstance() *LoadBalancer {
@@ -162,14 +166,17 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 	var name = "kom-loadbalancer"
 	//var mgr = *lb.Manager
 	labels := map[string]string{
-		"app": name,
+		"app":      name,
+		"provider": "kom-operator",
 	}
 
 	var replicas int32 = 1
 	lb.Deployment = appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: lb.Namespace,
+			Name:        name,
+			Namespace:   lb.Namespace,
+			Annotations: annotations,
+			Labels:      labels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -214,8 +221,10 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 
 	var service = &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: lb.Namespace,
+			Name:        name,
+			Namespace:   lb.Namespace,
+			Annotations: annotations,
+			Labels:      labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{{
@@ -363,12 +372,17 @@ func (lb *LoadBalancer) writeConfig(cfg TraefikConfig, update bool) error {
 		return err
 	}
 
+	labels := map[string]string{
+		"provider": "kom-operator",
+	}
 	configStr := string(b)
 
 	lb.Config = corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      lb.ConfigName,
-			Namespace: lb.Namespace,
+			Name:        lb.ConfigName,
+			Namespace:   lb.Namespace,
+			Annotations: annotations,
+			Labels:      labels,
 		},
 		Data: map[string]string{
 			traefikConfigFileName: configStr,
