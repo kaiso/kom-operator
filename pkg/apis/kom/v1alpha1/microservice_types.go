@@ -1,11 +1,23 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+// Http http-based routes
+type Http struct {
+	Port corev1.ContainerPort `json:"port,omitempty"`
+	Rule string               `json:"rule,omitempty"`
+}
+
+// Routing define router rules
+type Routing struct {
+	Http []Http `json:"http,omitempty"`
+}
 
 // MicroserviceSpec defines the desired state of Microservice
 type MicroserviceSpec struct {
@@ -16,6 +28,7 @@ type MicroserviceSpec struct {
 	Image       string                   `json:"image"`
 	Command     []string                 `json:"command,omitempty"`
 	Autoscaling MicroservicesAutoscaling `json:"autoscaling"`
+	Routing     Routing                  `json:"routing,omitempty"`
 }
 
 // MicroservicesAutoscaling defines the autoscaling strategy configuration

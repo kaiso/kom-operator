@@ -15,6 +15,7 @@ import (
 
 	"github.com/kaiso/kom-operator/pkg/apis"
 	"github.com/kaiso/kom-operator/pkg/controller"
+	process "github.com/kaiso/kom-operator/pkg/process"
 	"github.com/kaiso/kom-operator/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
@@ -33,13 +34,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
+// RunModeType operator run mode
+type RunModeType string
+
+var log = logf.Log.WithName("cmd")
+
+const (
+	// LocalRunMode local run mode
+	LocalRunMode RunModeType = "local"
+	// ClusterRunMode cluster run mode
+	ClusterRunMode RunModeType = "cluster"
+)
+
 // Change below variables to serve metrics on different host or port.
 var (
 	metricsHost               = "0.0.0.0"
 	metricsPort         int32 = 8383
 	operatorMetricsPort int32 = 8686
+	ForceRunModeEnv           = "OSDK_FORCE_RUN_MODE"
 )
-var log = logf.Log.WithName("cmd")
 
 func printVersion() {
 	log.Info(fmt.Sprintf("Operator Version: %s", version.Version))
@@ -131,7 +144,16 @@ func main() {
 	// Add the Metrics Service
 	addMetrics(ctx, cfg)
 
-	log.Info("Starting the Cmd.")
+	err = process.InitLoadBalancer(ctx, "kom-loadbalancer", mgr)
+
+	if err != nil {
+		log.Error(err, "Manager can not create LoadBalancer")
+		os.Exit(1)
+	}
+
+	mgr.Add(process.GetInstance())
+
+	log.Info("Starting the KOM Operator Manager")
 
 	// Start the Cmd
 	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
@@ -208,4 +230,9 @@ func serveCRMetrics(cfg *rest.Config, operatorNs string) error {
 		return err
 	}
 	return nil
+}
+
+// isRunModeLocal defines if the operator is running locally
+func isRunModeLocal() bool {
+	return os.Getenv(ForceRunModeEnv) == string(LocalRunMode)
 }

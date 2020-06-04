@@ -2,14 +2,17 @@ package microservice
 
 import (
 	"context"
+	"encoding/json"
 
 	komv1alpha1 "github.com/kaiso/kom-operator/pkg/apis/kom/v1alpha1"
+	"github.com/kaiso/kom-operator/pkg/process"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -85,7 +88,7 @@ type ReconcileMicroservice struct {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling Microservice")
+	reqLogger.Info("Reconciling Microservice", "request", request)
 
 	// Fetch the Microservice instance
 	instance := &komv1alpha1.Microservice{}
@@ -101,11 +104,52 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	// begin finalizer logic
+	myFinalizerName := "router.finalizers.kom.kaiso.github.io"
+
+	// examine DeletionTimestamp to determine if object is under deletion
+	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// registering our finalizer.
+		if !containsString(instance.ObjectMeta.Finalizers, myFinalizerName) {
+			instance.ObjectMeta.Finalizers = append(instance.ObjectMeta.Finalizers, myFinalizerName)
+			if err := r.client.Update(context.Background(), instance); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if containsString(instance.ObjectMeta.Finalizers, myFinalizerName) {
+			// our finalizer is present, so lets handle any external dependency
+			if err := r.finalize(instance); err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried
+				return reconcile.Result{}, err
+			}
+
+			// remove our finalizer from the list and update it.
+			instance.ObjectMeta.Finalizers = removeString(instance.ObjectMeta.Finalizers, myFinalizerName)
+			if err := r.client.Update(context.Background(), instance); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+
+		// Stop reconciliation as the item is being deleted
+		return reconcile.Result{}, nil
+	}
+
+	// End of finalizer logic
+
 	// Define a new Pod object
-	deployment := newDeploymentForCR(instance)
+	deployment, service, routers := newDeploymentForCR(instance)
 
 	// Set Microservice instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if err := controllerutil.SetControllerReference(instance, service, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -115,6 +159,17 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 	if err != nil && errors.IsNotFound(err) {
 		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		err = r.client.Create(context.TODO(), deployment)
+		if service != nil && err == nil {
+			err = r.client.Create(context.TODO(), service)
+			if err == nil && len(routers) > 0 {
+				for pNumber, rule := range routers {
+					err = (*process.GetInstance()).CreateRouter(service.Namespace, rule, service.Name, pNumber)
+					if err != nil {
+						reqLogger.Error(err, "Error creating loadbalancer route")
+					}
+				}
+			}
+		}
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -131,14 +186,14 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 }
 
 // newDeploymentForCR returns a busybox deployment with the same name/namespace as the cr
-func newDeploymentForCR(cr *komv1alpha1.Microservice) *appsv1.Deployment {
+func newDeploymentForCR(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *corev1.Service, map[int32]string) {
 	labels := map[string]string{
 		"app": cr.Name,
 	}
 
 	replicas := cr.Spec.Autoscaling.Min
 
-	return &appsv1.Deployment{
+	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name,
 			Namespace: cr.Namespace,
@@ -157,13 +212,70 @@ func newDeploymentForCR(cr *komv1alpha1.Microservice) *appsv1.Deployment {
 						Image:   cr.Spec.Image,
 						Name:    cr.Name,
 						Command: cr.Spec.Command,
-						Ports: []corev1.ContainerPort{{
-							ContainerPort: 5000,
-							Name:          "http",
-						}},
 					}},
 				},
 			},
 		},
 	}
+
+	var size = len(cr.Spec.Routing.Http)
+	if size != 0 {
+		service := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cr.Name,
+				Namespace: cr.Namespace,
+			},
+			Spec: corev1.ServiceSpec{
+				Ports:    []corev1.ServicePort{},
+				Selector: labels,
+			},
+		}
+		var ports []corev1.ContainerPort
+		routers := make(map[int32]string)
+		for _, element := range cr.Spec.Routing.Http {
+			ports = append(ports, element.Port)
+			(*service).Spec.Ports = append(service.Spec.Ports, corev1.ServicePort{
+				Name:       element.Port.Name,
+				Protocol:   corev1.ProtocolTCP,
+				Port:       element.Port.ContainerPort,
+				TargetPort: intstr.FromString(element.Port.Name),
+			})
+			if element.Rule != "" {
+				routers[element.Port.ContainerPort] = element.Rule
+			}
+		}
+		deployment.Spec.Template.Spec.Containers[0].Ports = ports
+		return deployment, service, routers
+	}
+	return deployment, nil, nil
+}
+
+func (r *ReconcileMicroservice) finalize(instance *komv1alpha1.Microservice) error {
+	log.Info("finalize instance ", "Namespace", instance.Namespace, "Name", instance.Name)
+	return nil
+}
+
+// Helper functions to check and remove string from a slice of strings.
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) (result []string) {
+	for _, item := range slice {
+		if item == s {
+			continue
+		}
+		result = append(result, item)
+	}
+	return
+}
+
+func prettyPrint(i interface{}) string {
+	s, _ := json.MarshalIndent(i, "", "\t")
+	return string(s)
 }

@@ -16,10 +16,10 @@ spec:
       containers:
         - name: kom-operator
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: kaiso/kom-operator:v0.1.1
           command:
           - kom-operator
-          imagePullPolicy: Always
+          # imagePullPolicy: Never
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
