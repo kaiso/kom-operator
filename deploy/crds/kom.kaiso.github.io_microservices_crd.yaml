@@ -31,6 +31,10 @@ spec:
         spec:
           description: MicroserviceSpec defines the desired state of Microservice
           properties:
+            args:
+              items:
+                type: string
+              type: array
             autoscaling:
               description: MicroservicesAutoscaling defines the autoscaling strategy
                 configuration
@@ -101,6 +105,61 @@ spec:
           type: object
         status:
           description: MicroserviceStatus defines the observed state of Microservice
+          properties:
+            lastUpdate:
+              format: date-time
+              type: string
+            reason:
+              type: string
+            routing:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "operator-sdk generate k8s" to regenerate
+                code after modifying this file Add custom validation using kubebuilder
+                tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              properties:
+                http:
+                  items:
+                    description: Http http-based routes
+                    properties:
+                      port:
+                        description: ContainerPort represents a network port in a
+                          single container.
+                        properties:
+                          containerPort:
+                            description: Number of port to expose on the pod's IP
+                              address. This must be a valid port number, 0 < x < 65536.
+                            format: int32
+                            type: integer
+                          hostIP:
+                            description: What host IP to bind the external port to.
+                            type: string
+                          hostPort:
+                            description: Number of port to expose on the host. If
+                              specified, this must be a valid port number, 0 < x <
+                              65536. If HostNetwork is specified, this must match
+                              ContainerPort. Most containers do not need this.
+                            format: int32
+                            type: integer
+                          name:
+                            description: If specified, this must be an IANA_SVC_NAME
+                              and unique within the pod. Each named port in a pod
+                              must have a unique name. Name for the port that can
+                              be referred to by services.
+                            type: string
+                          protocol:
+                            description: Protocol for port. Must be UDP, TCP, or SCTP.
+                              Defaults to "TCP".
+                            type: string
+                        required:
+                        - containerPort
+                        type: object
+                      rule:
+                        type: string
+                    type: object
+                  type: array
+              type: object
+            status:
+              type: string
           type: object
       type: object
   version: v1alpha1

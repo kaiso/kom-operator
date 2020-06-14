@@ -2,10 +2,11 @@ package microservice
 
 import (
 	"context"
-	"encoding/json"
+	"reflect"
 
 	komv1alpha1 "github.com/kaiso/kom-operator/pkg/apis/kom/v1alpha1"
 	"github.com/kaiso/kom-operator/pkg/process"
+	komutil "github.com/kaiso/kom-operator/pkg/util"
 	"github.com/kaiso/kom-operator/version"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,7 +52,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource Microservice
-	err = c.Watch(&source.Kind{Type: &komv1alpha1.Microservice{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &komv1alpha1.Microservice{}}, &handler.EnqueueRequestForObject{}, komv1alpha1.MicroserviceChangedPredicate{})
 	if err != nil {
 		return err
 	}
@@ -105,6 +106,8 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	//fmt.Println(komutil.PrettyPrint(instance))
+
 	// begin finalizer logic
 	myFinalizerName := "router.finalizers.kom.kaiso.github.io"
 
@@ -113,7 +116,7 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 		// The object is not being deleted, so if it does not have our finalizer,
 		// then lets add the finalizer and update the object. This is equivalent
 		// registering our finalizer.
-		if !containsString(instance.ObjectMeta.Finalizers, myFinalizerName) {
+		if !komutil.ContainsString(instance.ObjectMeta.Finalizers, myFinalizerName) {
 			instance.ObjectMeta.Finalizers = append(instance.ObjectMeta.Finalizers, myFinalizerName)
 			if err := r.client.Update(context.Background(), instance); err != nil {
 				return reconcile.Result{}, err
@@ -121,7 +124,7 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 		}
 	} else {
 		// The object is being deleted
-		if containsString(instance.ObjectMeta.Finalizers, myFinalizerName) {
+		if komutil.ContainsString(instance.ObjectMeta.Finalizers, myFinalizerName) {
 			// our finalizer is present, so lets handle any external dependency
 			if err := r.finalize(instance); err != nil {
 				// if fail to delete the external dependency here, return with error
@@ -130,7 +133,7 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 			}
 
 			// remove our finalizer from the list and update it.
-			instance.ObjectMeta.Finalizers = removeString(instance.ObjectMeta.Finalizers, myFinalizerName)
+			instance.ObjectMeta.Finalizers = komutil.RemoveString(instance.ObjectMeta.Finalizers, myFinalizerName)
 			if err := r.client.Update(context.Background(), instance); err != nil {
 				return reconcile.Result{}, err
 			}
@@ -155,34 +158,72 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Check if this Deployment already exists
-	found := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
+	existingDeployment := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, existingDeployment)
 	if err != nil && errors.IsNotFound(err) {
 		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		err = r.client.Create(context.TODO(), deployment)
 		if service != nil && err == nil {
 			err = r.client.Create(context.TODO(), service)
 			if err == nil && len(routers) > 0 {
-				for pNumber, rule := range routers {
-					err = (*process.GetInstance()).CreateRouter(service.Namespace, rule, service.Name, pNumber)
-					if err != nil {
-						reqLogger.Error(err, "Error creating loadbalancer route")
-					}
+				err = (*process.GetInstance()).CreateRouter(service.Namespace, service.Name, routers)
+				if err != nil {
+					reqLogger.Error(err, "Error creating loadbalancer route")
 				}
 			}
 		}
+
+		r.udpateStatus(instance, err)
+
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
 		// Deployment created successfully - don't requeue
+		reqLogger.Info("Finished Creating resources", "request", request)
 		return reconcile.Result{}, nil
 	} else if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Deployment already exists - don't requeue
-	reqLogger.Info("Skip reconcile: deployment already exists", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+	reqLogger.Info("deployment already exists", "Deployment.Namespace", existingDeployment.Namespace, "Deployment.Name", existingDeployment.Name)
+
+	deploymentChanged, serviceChanged, err := hasChanges(instance, existingDeployment)
+
+	if !deploymentChanged && !serviceChanged {
+		return reconcile.Result{}, nil
+	}
+
+	if deploymentChanged == true {
+		reqLogger.Info("updating deployment...", "Deployment.Namespace", existingDeployment.Namespace, "Deployment.Name", existingDeployment.Name)
+		err = r.client.Update(context.TODO(), deployment)
+	}
+
+	if err == nil && serviceChanged {
+		reqLogger.Info("updating service...", "Deployment.Namespace", existingDeployment.Namespace, "Deployment.Name", existingDeployment.Name)
+		existingService := &corev1.Service{}
+		err := r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, existingService)
+		if err == nil {
+			err = r.client.Delete(context.TODO(), existingService)
+			if err == nil {
+				err = (*process.GetInstance()).RemoveRouter(service.Namespace, service.Name, len(routers) == 0)
+				if err == nil {
+					err = r.client.Create(context.TODO(), service)
+					if err == nil && len(routers) > 0 {
+						err = (*process.GetInstance()).CreateRouter(service.Namespace, service.Name, routers)
+					}
+				}
+			}
+		}
+	}
+
+	r.udpateStatus(instance, err)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	reqLogger.Info("Finished Updating resources", "request", request)
 	return reconcile.Result{}, nil
 }
 
@@ -219,6 +260,7 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 						Image:   cr.Spec.Image,
 						Name:    cr.Name,
 						Command: cr.Spec.Command,
+						Args:    cr.Spec.Args,
 					}},
 				},
 			},
@@ -262,40 +304,63 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 func (r *ReconcileMicroservice) finalize(instance *komv1alpha1.Microservice) error {
 	reqLogger := log.WithValues("Request.Namespace", instance.Namespace, "Request.Name", instance.Name)
 	reqLogger.Info("finalize instance ")
-	_, service, routers := getInstanceObjects(instance)
+	_, service, _ := getInstanceObjects(instance)
 	if service != nil {
-		for pNumber, rule := range routers {
-			err := (*process.GetInstance()).RemoveRouter(service.Namespace, rule, service.Name, pNumber)
-			if err != nil {
-				reqLogger.Error(err, "Error removing loadbalancer route")
-				return err
-			}
+		err := (*process.GetInstance()).RemoveRouter(service.Namespace, service.Name, true)
+		if err != nil {
+			reqLogger.Error(err, "Error removing loadbalancer route")
+			return err
 		}
 	}
 	return nil
 }
 
-// Helper functions to check and remove string from a slice of strings.
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
+func hasChanges(instance *komv1alpha1.Microservice, existingDeployment *appsv1.Deployment) (bool, bool, error) {
+	var existingReplicas int32 = *existingDeployment.Spec.Replicas
+	deploymentChanged := existingReplicas != instance.Spec.Autoscaling.Min
+
+	if deploymentChanged == false {
+		found := false
+		for _, container := range existingDeployment.Spec.Template.Spec.Containers {
+			if instance.Spec.Image == container.Image {
+				found = true
+				//fmt.Printf("not found  %T %v\n", instance.Spec.Args, instance.Spec.Args)
+				if !reflect.DeepEqual(instance.Spec.Args, container.Args) ||
+					!reflect.DeepEqual(instance.Spec.Command, container.Command) {
+					deploymentChanged = true
+				}
+			}
+		}
+		if found == false {
+			deploymentChanged = true
 		}
 	}
-	return false
+	serviceChanged := !komutil.Equals(instance.Status.Routing, instance.Spec.Routing)
+	return deploymentChanged, serviceChanged, nil
 }
 
-func removeString(slice []string, s string) (result []string) {
-	for _, item := range slice {
-		if item == s {
-			continue
-		}
-		result = append(result, item)
+func (r *ReconcileMicroservice) udpateStatus(instance *komv1alpha1.Microservice, err error) error {
+	reqLogger := log.WithValues("Request.Namespace", instance.Namespace, "Request.Name", instance.Name)
+
+	var stampedStatus komv1alpha1.Status
+	var reason string
+	if err == nil {
+		reason = ""
+		stampedStatus = komv1alpha1.Success
+	} else {
+		reason = err.Error()
+		stampedStatus = komv1alpha1.Failure
 	}
-	return
-}
-
-func prettyPrint(i interface{}) string {
-	s, _ := json.MarshalIndent(i, "", "\t")
-	return string(s)
+	status := komv1alpha1.MicroserviceStatus{
+		LastUpdate: metav1.Now(),
+		Reason:     reason,
+		Status:     stampedStatus,
+		Routing:    instance.Spec.Routing,
+	}
+	instance.Status = status
+	err = r.client.Status().Update(context.Background(), instance)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update Resource status ")
+	}
+	return err
 }

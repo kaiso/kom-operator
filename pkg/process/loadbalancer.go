@@ -104,7 +104,10 @@ func (lb *LoadBalancer) Start(<-chan struct{}) error {
 		panic(err.Error())
 	}
 	//to remove
-	err = lb.CreateRouter("", "PathPrefix(`/api`) || PathPrefix(`/dashboard`)", "api@internal", 0)
+	dashboardRoutes := map[int32]string{
+		0: "PathPrefix(`/api`) || PathPrefix(`/dashboard`)",
+	}
+	err = lb.CreateRouter("", "api@internal", dashboardRoutes)
 
 	if err != nil {
 		lbLogger.Error(err, fmt.Sprintf("Failed to create the Dashboard router"))
@@ -168,7 +171,7 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		"provider": "kom-operator",
 	}
 
-	var replicas int32 = 1
+	var replicas int32 = 2
 	lb.Deployment = appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -313,15 +316,17 @@ func (lb *LoadBalancer) writeConfig(cfg TraefikConfig, update bool) error {
 func (lb *LoadBalancer) reloadDeployment() error {
 	payload := []PatchInterfaceValue{{
 		Op:    "add",
-		Path:  "/spec/template/metadata/labels/reload-date",
-		Value: time.Now().Format("2006-01-02T15_04_05"),
+		Path:  "/spec/template/metadata/annotations",
+		Value: map[string]interface{}{"reload-date": time.Now().Format("2006-01-02T15:04:05")},
 	}}
 	payloadBytes, _ := json.Marshal(payload)
 
 	dep := lb.Deployment
+
 	lbLogger.Info(fmt.Sprintf("reloading LoadBalancer deployment..."))
 	err := (*lb.Manager).GetClient().
 		Patch(lb.Context, &dep, crclient.RawPatch(types.JSONPatchType, payloadBytes))
+
 	if err != nil {
 		lbLogger.Error(err, "Failed to reload LoadBalancer")
 		return err
