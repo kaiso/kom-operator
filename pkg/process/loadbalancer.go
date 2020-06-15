@@ -103,16 +103,6 @@ func (lb *LoadBalancer) Start(<-chan struct{}) error {
 	if err != nil {
 		panic(err.Error())
 	}
-	//to remove
-	dashboardRoutes := map[int32]string{
-		0: "PathPrefix(`/api`) || PathPrefix(`/dashboard`)",
-	}
-	err = lb.CreateRouter("", "api@internal", dashboardRoutes)
-
-	if err != nil {
-		lbLogger.Error(err, fmt.Sprintf("Failed to create the Dashboard router"))
-		panic(err.Error())
-	}
 
 	return nil
 
@@ -233,7 +223,13 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 				Protocol:   corev1.ProtocolTCP,
 				Port:       80,
 				TargetPort: intstr.FromString("http"),
-			}},
+			},
+				{
+					Name:       "admin",
+					Protocol:   corev1.ProtocolTCP,
+					Port:       5050,
+					TargetPort: intstr.FromString("admin"),
+				}},
 			Selector: labels,
 			Type:     corev1.ServiceTypeLoadBalancer,
 		},
@@ -258,7 +254,29 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		if err != nil {
 			panic(err.Error())
 		}
-		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was created [%v]", lb.Deployment.Name))
+		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was created "))
+	} else {
+		lbLogger.Info(fmt.Sprintf("Updating the KOM LoadBalancer..."))
+		err = (*lb.Manager).GetClient().Update(lb.Context, &lb.Deployment)
+		if err != nil {
+			panic(err.Error())
+		}
+		existingService := &corev1.Service{}
+		err := (*lb.Manager).GetClient().Get(lb.Context, types.NamespacedName{
+			Name:      lb.Deployment.Name,
+			Namespace: lb.Deployment.Namespace,
+		}, existingService)
+		if err != nil {
+			return err
+		}
+
+		service.ResourceVersion = existingService.ResourceVersion
+		service.Spec.ClusterIP = existingService.Spec.ClusterIP
+		err = (*lb.Manager).GetClient().Update(lb.Context, service)
+		if err != nil {
+			panic(err.Error())
+		}
+		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was updated "))
 	}
 
 	return nil
