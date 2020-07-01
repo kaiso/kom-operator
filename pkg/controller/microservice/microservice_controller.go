@@ -4,10 +4,13 @@ import (
 	"context"
 	"reflect"
 
+	"github.com/go-playground/validator/v10"
 	komv1alpha1 "github.com/kaiso/kom-operator/pkg/apis/kom/v1alpha1"
 	"github.com/kaiso/kom-operator/pkg/process"
 	komutil "github.com/kaiso/kom-operator/pkg/util"
 	"github.com/kaiso/kom-operator/version"
+
+	// "github.com/redhat-cop/operator-utils/pkg/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -25,7 +28,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var log = logf.Log.WithName("controller_microservice")
+const controllerName = "controller_microservice"
+
+var validate = validator.New()
+var log = logf.Log.WithName(controllerName)
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -40,7 +46,7 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileMicroservice{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileMicroservice{mgr.GetClient(), mgr.GetScheme()}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -52,7 +58,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource Microservice
-	err = c.Watch(&source.Kind{Type: &komv1alpha1.Microservice{}}, &handler.EnqueueRequestForObject{}, komv1alpha1.MicroserviceChangedPredicate{})
+	err = c.Watch(&source.Kind{Type: &komv1alpha1.Microservice{}}, &handler.EnqueueRequestForObject{}, komutil.MicroserviceChangedPredicate{})
 	if err != nil {
 		return err
 	}
@@ -106,6 +112,10 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	if ok, err := r.isValid(instance); !ok {
+		return reconcile.Result{}, err
+	}
+
 	//fmt.Println(komutil.PrettyPrint(instance))
 
 	// begin finalizer logic
@@ -152,9 +162,10 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
-
-	if err := controllerutil.SetControllerReference(instance, service, r.scheme); err != nil {
-		return reconcile.Result{}, err
+	if service != nil {
+		if err := controllerutil.SetControllerReference(instance, service, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	// Check if this Deployment already exists
@@ -257,17 +268,23 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image:   cr.Spec.Image,
-						Name:    cr.Name,
-						Command: cr.Spec.Command,
-						Args:    cr.Spec.Args,
+						Image:        cr.Spec.Container.Image,
+						Name:         cr.Name,
+						Command:      cr.Spec.Container.Command,
+						Args:         cr.Spec.Container.Args,
+						VolumeMounts: cr.Spec.Container.VolumeMounts,
+						Resources: corev1.ResourceRequirements{
+							Limits: cr.Spec.Container.Limits,
+						},
+						ImagePullPolicy: cr.Spec.Container.ImagePullPolicy,
 					}},
+					Volumes: cr.Spec.Volumes,
 				},
 			},
 		},
 	}
 
-	var size = len(cr.Spec.Routing.Http)
+	var size = len(cr.Spec.Container.Routing.HTTP)
 	if size != 0 {
 		service := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -283,7 +300,7 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 		}
 		var ports []corev1.ContainerPort
 		routers := make(map[int32]string)
-		for _, element := range cr.Spec.Routing.Http {
+		for _, element := range cr.Spec.Container.Routing.HTTP {
 			ports = append(ports, element.Port)
 			(*service).Spec.Ports = append(service.Spec.Ports, corev1.ServicePort{
 				Name:       element.Port.Name,
@@ -322,11 +339,11 @@ func hasChanges(instance *komv1alpha1.Microservice, existingDeployment *appsv1.D
 	if deploymentChanged == false {
 		found := false
 		for _, container := range existingDeployment.Spec.Template.Spec.Containers {
-			if instance.Spec.Image == container.Image {
+			if instance.Spec.Container.Image == container.Image {
 				found = true
 				//fmt.Printf("not found  %T %v\n", instance.Spec.Args, instance.Spec.Args)
-				if !reflect.DeepEqual(instance.Spec.Args, container.Args) ||
-					!reflect.DeepEqual(instance.Spec.Command, container.Command) {
+				if !reflect.DeepEqual(instance.Spec.Container.Args, container.Args) ||
+					!reflect.DeepEqual(instance.Spec.Container.Command, container.Command) {
 					deploymentChanged = true
 				}
 			}
@@ -335,7 +352,7 @@ func hasChanges(instance *komv1alpha1.Microservice, existingDeployment *appsv1.D
 			deploymentChanged = true
 		}
 	}
-	serviceChanged := !komutil.Equals(instance.Status.Routing, instance.Spec.Routing)
+	serviceChanged := !komutil.Equals(instance.Status.Routing, instance.Spec.Container.Routing)
 	return deploymentChanged, serviceChanged, nil
 }
 
@@ -355,7 +372,7 @@ func (r *ReconcileMicroservice) udpateStatus(instance *komv1alpha1.Microservice,
 		LastUpdate: metav1.Now(),
 		Reason:     reason,
 		Status:     stampedStatus,
-		Routing:    instance.Spec.Routing,
+		Routing:    instance.Spec.Container.Routing,
 	}
 	instance.Status = status
 	err = r.client.Status().Update(context.Background(), instance)
@@ -363,4 +380,17 @@ func (r *ReconcileMicroservice) udpateStatus(instance *komv1alpha1.Microservice,
 		reqLogger.Error(err, "Failed to update Resource status ")
 	}
 	return err
+}
+
+func (r *ReconcileMicroservice) isValid(obj metav1.Object) (bool, error) {
+	instance, ok := obj.(*komv1alpha1.Microservice)
+	if !ok {
+		return false, errors.NewBadRequest("Resource is not of type Microservice")
+	}
+
+	if err := validate.Struct(instance); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

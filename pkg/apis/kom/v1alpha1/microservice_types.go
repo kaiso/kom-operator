@@ -1,13 +1,8 @@
 package v1alpha1
 
 import (
-	"reflect"
-
-	"github.com/prometheus/common/log"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 //Status reports status of the reconcile
@@ -23,15 +18,36 @@ const (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Http http-based routes
-type Http struct {
+// HTTP http-based routes
+type HTTP struct {
 	Port corev1.ContainerPort `json:"port,omitempty"`
 	Rule string               `json:"rule,omitempty"`
 }
 
 // Routing define router rules
 type Routing struct {
-	Http []Http `json:"http,omitempty"`
+	HTTP []HTTP `json:"http,omitempty"`
+}
+
+// MicroservicesAutoscaling defines the autoscaling strategy configuration
+type MicroservicesAutoscaling struct {
+	Max int32 `json:"max"`
+	Min int32 `json:"min"`
+}
+
+// Container the container that will run the microservice
+type Container struct {
+	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
+	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
+
+	Image           string               `json:"image"`
+	Command         []string             `json:"command,omitempty"`
+	Args            []string             `json:"args,omitempty"`
+	Routing         Routing              `json:"routing,omitempty"`
+	ImagePullPolicy corev1.PullPolicy    `json:"imagePullPolicy,omitempty"`
+	VolumeMounts    []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+	Limits          corev1.ResourceList  `json:"limits,omitempty"`
 }
 
 // MicroserviceSpec defines the desired state of Microservice
@@ -39,18 +55,10 @@ type MicroserviceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-
-	Image       string                   `json:"image"`
-	Command     []string                 `json:"command,omitempty"`
-	Args        []string                 `json:"args,omitempty"`
-	Autoscaling MicroservicesAutoscaling `json:"autoscaling"`
-	Routing     Routing                  `json:"routing,omitempty"`
-}
-
-// MicroservicesAutoscaling defines the autoscaling strategy configuration
-type MicroservicesAutoscaling struct {
-	Max int32 `json:"max"`
-	Min int32 `json:"min"`
+	Container          Container                `json:"container"`
+	Autoscaling        MicroservicesAutoscaling `json:"autoscaling,omitempty"`
+	Volumes            []corev1.Volume          `json:"volumes,omitempty"`
+	ServiceAccountName string                   `json:"serviceAccountName,omitempty"`
 }
 
 // MicroserviceStatus defines the observed state of Microservice
@@ -88,35 +96,4 @@ type MicroserviceList struct {
 
 func init() {
 	SchemeBuilder.Register(&Microservice{}, &MicroserviceList{})
-}
-
-//MicroserviceChangedPredicate predicate to detect changes
-type MicroserviceChangedPredicate struct {
-	predicate.Funcs
-}
-
-// Update implements default UpdateEvent filter for validating resource version change
-func (MicroserviceChangedPredicate) Update(e event.UpdateEvent) bool {
-	if e.MetaOld == nil {
-		log.Error(nil, "Update event has no old metadata", "event", e)
-		return false
-	}
-	if e.ObjectOld == nil {
-		log.Error(nil, "Update event has no old runtime object to update", "event", e)
-		return false
-	}
-	if e.ObjectNew == nil {
-		log.Error(nil, "Update event has no new runtime object for update", "event", e)
-		return false
-	}
-	if e.MetaNew == nil {
-		log.Error(nil, "Update event has no new metadata", "event", e)
-		return false
-	}
-	if e.MetaNew.GetGeneration() == e.MetaOld.GetGeneration() &&
-		e.MetaNew.GetGeneration() != 0 &&
-		reflect.DeepEqual(e.MetaNew.GetFinalizers(), e.MetaOld.GetFinalizers()) {
-		return false
-	}
-	return true
 }

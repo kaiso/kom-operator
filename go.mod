@@ -3,6 +3,7 @@ module github.com/kaiso/kom-operator
 go 1.13
 
 require (
+	github.com/go-playground/validator/v10 v10.3.0
 	github.com/operator-framework/operator-sdk v0.17.0
 	github.com/prometheus/common v0.9.1
 	github.com/spf13/pflag v1.0.5
