@@ -78,9 +78,9 @@ func InitLoadBalancer(ctx context.Context, name string, mgr manager.Manager) err
 // Start implement Runnable.Start
 func (lb *LoadBalancer) Start(<-chan struct{}) error {
 	lbLogger.Info("Starting the KOM LoadBalancer Manager")
-	var mgr = *lb.Manager
+
 	if !isRunModeLocal() {
-		lb.Owner, _ = myOwnerRef(lb.Context, mgr.GetClient(), lb.Namespace)
+		lb.Owner, _ = lb.myOwnerRef()
 	}
 
 	err := lb.loadConfig()
@@ -108,17 +108,21 @@ func (lb *LoadBalancer) Start(<-chan struct{}) error {
 
 }
 
-func myOwnerRef(ctx context.Context, client crclient.Client, ns string) (*metav1.OwnerReference, error) {
-	myPod, err := k8sutil.GetPod(ctx, client, ns)
+func (lb *LoadBalancer) myOwnerRef() (*metav1.OwnerReference, error) {
+	namespace, _ := k8sutil.GetOperatorNamespace()
+	name, _ := k8sutil.GetOperatorName()
+	ref := appsv1.Deployment{}
+	err := (*lb.Manager).GetClient().Get(lb.Context, crclient.ObjectKey{Namespace: namespace, Name: name}, &ref)
 	if err != nil {
+		lbLogger.Error(err, fmt.Sprintf("Could not find pod [%v/%v]", namespace, name))
 		return nil, err
 	}
 
 	owner := &metav1.OwnerReference{
 		APIVersion: "v1",
-		Kind:       "Pod",
-		Name:       myPod.ObjectMeta.Name,
-		UID:        myPod.ObjectMeta.UID,
+		Kind:       "Deployment",
+		Name:       ref.ObjectMeta.Name,
+		UID:        ref.ObjectMeta.UID,
 	}
 	return owner, nil
 }
@@ -179,6 +183,7 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
+					ServiceAccountName: "kom-operator",
 					Containers: []corev1.Container{{
 						Image: traefikImage,
 						Name:  name,
@@ -237,11 +242,11 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 
 	if lb.Owner != nil {
 		lb.Deployment.OwnerReferences = []metav1.OwnerReference{*lb.Owner}
-		service.OwnerReferences = []metav1.OwnerReference{*lb.Owner}
 	}
 
 	f, err := lb.findExistingObject(lb.Deployment.Name, lb.Deployment.Namespace, &lb.Deployment)
 	if err != nil {
+		lbLogger.Error(err, "Error retrieving loadbalancer deployment")
 		panic(err.Error())
 	}
 	if f == false {
@@ -267,7 +272,13 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 			Namespace: lb.Deployment.Namespace,
 		}, existingService)
 		if err != nil {
-			return err
+			lbLogger.Error(err, "Error retrieving loadbalancer service, this is likely due to a manual intervention! "+
+				"The KOM Operator will create a new service, dependening on your cloud provider this may create a new loadbalancer endpoint ")
+			existingService = service
+			err = (*lb.Manager).GetClient().Create(lb.Context, existingService)
+			if err != nil {
+				panic(err.Error())
+			}
 		}
 
 		service.ResourceVersion = existingService.ResourceVersion
