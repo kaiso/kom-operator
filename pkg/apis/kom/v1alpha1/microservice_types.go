@@ -8,11 +8,27 @@ import (
 //Status reports status of the reconcile
 type Status string
 
+// Resource defines the resouce targeted by a Scaler
+type Resource string
+
+// ScalerType represents whether the metric type is Utilization, Value, or AverageValue
+type ScalerType string
+
 const (
 	//Success reconcile success
 	Success Status = "Success"
 	//Failure reconcile failure
 	Failure Status = "Failure"
+	// CPU the CPU resource type
+	CPU Resource = "CPU"
+	// Memory the Memory resource type
+	Memory Resource = "Memory"
+	// Utilization scaler type
+	Utilization ScalerType = "Utilization"
+	// Value scaler type
+	Value ScalerType = "Value"
+	// AverageValue scaler type
+	AverageValue ScalerType = "AverageValue"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -29,10 +45,18 @@ type Routing struct {
 	HTTP []HTTP `json:"http,omitempty"`
 }
 
+// Scaler define a scaler based on a metric
+type Scaler struct {
+	Resource Resource   `json:"resource"`
+	Type     ScalerType `json:"type"`
+	Value    string     `json:"value"`
+}
+
 // MicroservicesAutoscaling defines the autoscaling strategy configuration
 type MicroservicesAutoscaling struct {
-	Max int32 `json:"max"`
-	Min int32 `json:"min"`
+	Scaler []Scaler `json:"scaler,omitempty"`
+	Max    int32    `json:"max"`
+	Min    int32    `json:"min"`
 }
 
 // Container the container that will run the microservice

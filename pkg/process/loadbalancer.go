@@ -68,8 +68,8 @@ func InitLoadBalancer(ctx context.Context, name string, mgr manager.Manager) err
 				panic(err.Error())
 			}
 		} else {
-			lbLogger.Info("not running in a cluster. using namespace default")
-			instance.Namespace = "default"
+			lbLogger.Info("not running in a cluster. using namespace kube-system")
+			instance.Namespace = "kube-system"
 		}
 	})
 	return nil
@@ -272,20 +272,15 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 			Namespace: lb.Deployment.Namespace,
 		}, existingService)
 		if err != nil {
-			lbLogger.Error(err, "Error retrieving loadbalancer service, this is likely due to a manual intervention! "+
+			lbLogger.Error(err, "Error retrieving the KOM LoadBalancer service, this is likely due to a manual intervention! "+
 				"The KOM Operator will create a new service, dependening on your cloud provider this may create a new loadbalancer endpoint ")
 			existingService = service
 			err = (*lb.Manager).GetClient().Create(lb.Context, existingService)
 			if err != nil {
 				panic(err.Error())
 			}
-		}
-
-		service.ResourceVersion = existingService.ResourceVersion
-		service.Spec.ClusterIP = existingService.Spec.ClusterIP
-		err = (*lb.Manager).GetClient().Update(lb.Context, service)
-		if err != nil {
-			panic(err.Error())
+		} else {
+			lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer service was already created. Skipping service creation... "))
 		}
 		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was updated "))
 	}

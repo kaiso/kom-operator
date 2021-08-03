@@ -2,6 +2,7 @@ package microservice
 
 import (
 	"context"
+	"os"
 	"reflect"
 
 	"github.com/go-playground/validator/v10"
@@ -28,7 +29,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const controllerName = "controller_microservice"
+const (
+	controllerName = "controller_microservice"
+	//smartReload environment varibale
+	smartReload string = "SMART_RELOAD"
+)
 
 var validate = validator.New()
 var log = logf.Log.WithName(controllerName)
@@ -46,7 +51,7 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileMicroservice{mgr.GetClient(), mgr.GetScheme()}
+	return &ReconcileMicroservice{client: mgr.GetClient(), scheme: mgr.GetScheme(), autoScalingHandler: &process.AutoScalingHandler{Manager: &mgr, Context: context.TODO(), Scheme: mgr.GetScheme()}}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -55,6 +60,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	c, err := controller.New("microservice-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
 		return err
+	}
+
+	if os.Getenv(smartReload) == "false" {
+		log.WithValues("Operator", "KOM-Operator").Info(" Smart reload was disabled, the deployments will be replaced on every reconcile")
 	}
 
 	// Watch for changes to primary resource Microservice
@@ -83,8 +92,9 @@ var _ reconcile.Reconciler = &ReconcileMicroservice{}
 type ReconcileMicroservice struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client             client.Client
+	scheme             *runtime.Scheme
+	autoScalingHandler *process.AutoScalingHandler
 }
 
 // Reconcile reads that state of the cluster for a Microservice object and makes changes based on the state read
@@ -189,7 +199,7 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-
+		r.autoScalingHandler.Run(instance, deployment)
 		// Deployment created successfully - don't requeue
 		reqLogger.Info("Finished Creating resources", "request", request)
 		return reconcile.Result{}, nil
@@ -199,8 +209,17 @@ func (r *ReconcileMicroservice) Reconcile(request reconcile.Request) (reconcile.
 
 	reqLogger.Info("deployment already exists", "Deployment.Namespace", existingDeployment.Namespace, "Deployment.Name", existingDeployment.Name)
 
-	deploymentChanged, serviceChanged, err := hasChanges(instance, existingDeployment)
+	r.autoScalingHandler.Run(instance, existingDeployment)
 
+	deploymentChanged, serviceChanged, err := false, false, nil
+	if os.Getenv(smartReload) == "false" {
+		deploymentChanged, serviceChanged = true, true
+	} else {
+		deploymentChanged, serviceChanged, err = hasChanges(instance, existingDeployment)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 	if !deploymentChanged && !serviceChanged {
 		return reconcile.Result{}, nil
 	}
@@ -248,7 +267,11 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 		"creator": "kom-operator.kaiso.github.io/" + version.Version,
 	}
 
-	replicas := cr.Spec.Autoscaling.Min
+	var replicas int32 = 1
+
+	if (cr.Spec.Autoscaling.Min == cr.Spec.Autoscaling.Max || len(cr.Spec.Autoscaling.Scaler) == 0) && cr.Spec.Autoscaling.Min > 0 {
+		replicas = cr.Spec.Autoscaling.Min
+	}
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -275,10 +298,12 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 						VolumeMounts: cr.Spec.Container.VolumeMounts,
 						Resources: corev1.ResourceRequirements{
 							Limits: cr.Spec.Container.Limits,
+							Requests: cr.Spec.Container.Limits,
 						},
 						ImagePullPolicy: cr.Spec.Container.ImagePullPolicy,
 					}},
-					Volumes: cr.Spec.Volumes,
+					Volumes:            cr.Spec.Volumes,
+					ServiceAccountName: cr.Spec.ServiceAccountName,
 				},
 			},
 		},
@@ -335,7 +360,9 @@ func (r *ReconcileMicroservice) finalize(instance *komv1alpha1.Microservice) err
 func hasChanges(instance *komv1alpha1.Microservice, existingDeployment *appsv1.Deployment) (bool, bool, error) {
 	var existingReplicas int32 = *existingDeployment.Spec.Replicas
 	deploymentChanged := existingReplicas != instance.Spec.Autoscaling.Min
-
+	if deploymentChanged == false {
+		deploymentChanged = existingDeployment.Spec.Template.Spec.ServiceAccountName != instance.Spec.ServiceAccountName
+	}
 	if deploymentChanged == false {
 		found := false
 		for _, container := range existingDeployment.Spec.Template.Spec.Containers {
@@ -343,7 +370,8 @@ func hasChanges(instance *komv1alpha1.Microservice, existingDeployment *appsv1.D
 				found = true
 				//fmt.Printf("not found  %T %v\n", instance.Spec.Args, instance.Spec.Args)
 				if !reflect.DeepEqual(instance.Spec.Container.Args, container.Args) ||
-					!reflect.DeepEqual(instance.Spec.Container.Command, container.Command) {
+					 !reflect.DeepEqual(instance.Spec.Container.Command, container.Command) ||
+					 !reflect.DeepEqual(instance.Spec.Container.Limits, container.Resources.Limits) {
 					deploymentChanged = true
 				}
 			}

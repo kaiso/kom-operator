@@ -17,7 +17,7 @@ spec:
       containers:
         - name: kom-operator
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: kaiso/kom-operator:v1.0.2
           command:
           - kom-operator
           imagePullPolicy: Always
@@ -30,3 +30,5 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "kom-operator"
+            - name: SMART_RELOAD
+              value: "false"

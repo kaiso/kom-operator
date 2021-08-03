@@ -41,6 +41,25 @@ spec:
                 min:
                   format: int32
                   type: integer
+                scaler:
+                  items:
+                    description: Scaler define a scaler based on a metric
+                    properties:
+                      resource:
+                        description: Resource defines the resouce targeted by a Scaler
+                        type: string
+                      type:
+                        description: ScalerType represents whether the metric type
+                          is Utilization, Value, or AverageValue
+                        type: string
+                      value:
+                        type: string
+                    required:
+                    - resource
+                    - type
+                    - value
+                    type: object
+                  type: array
               required:
               - max
               - min
