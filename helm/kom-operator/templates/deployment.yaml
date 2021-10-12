@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: kube-system
+  name: kom-operator
+  labels:
+    provider: kaiso
+    version: "{{.Chart.AppVersion }}"
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      name: kom-operator
+  template:
+    metadata:
+      labels:
+        name: kom-operator
+    spec:
+      serviceAccountName: kom-operator
+      containers:
+        - name: kom-operator
+          image: "kaiso/kom-operator:{{.Chart.AppVersion }}"
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              value: "{{ .Values.watchNamespace }}"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "kom-operator"
+            - name: SMART_RELOAD
+              value: "false"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          
