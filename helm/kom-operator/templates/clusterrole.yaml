@@ -8,16 +8,15 @@ metadata:
   name: kom-operator
 rules:
 - apiGroups:
-  - ""
+  - '*'
   resources:
-  - pods
+  - configmaps
+  - endpoints
+  - events
+  - persistentvolumeclaims
+  - secrets
   - services
   - services/finalizers
-  - endpoints
-  - persistentvolumeclaims
-  - events
-  - configmaps
-  - secrets
   verbs:
   - create
   - delete
@@ -29,8 +28,8 @@ rules:
 - apiGroups:
   - apps
   resources:
-  - deployments
   - daemonsets
+  - deployments
   - replicasets
   - statefulsets
   verbs:
@@ -54,37 +53,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - monitoring.coreos.com
-  resources:
-  - servicemonitors
-  verbs:
-  - get
-  - create
-- apiGroups:
-  - apps
-  resourceNames:
-  - kom-operator
-  resources:
-  - deployments/finalizers
-  verbs:
-  - update
-- apiGroups:
   - ""
   resources:
   - pods
-  verbs:
-  - get
-- apiGroups:
-  - apps
-  resources:
-  - replicasets
-  - deployments
-  verbs:
-  - get
-- apiGroups:
-  - kom.kaiso.github.io
-  resources:
-  - '*'
   verbs:
   - create
   - delete
@@ -93,6 +64,32 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kom.kaiso.github.io
+  resources:
+  - microservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kom.kaiso.github.io
+  resources:
+  - microservices/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kom.kaiso.github.io
+  resources:
+  - microservices/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - extensions
   resources:
@@ -107,8 +104,49 @@ rules:
   - ingresses/status
   verbs:
   - update
-
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  - ingressclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses/status
+  verbs:
+  - update
 # end of role used by kom-opertaor
-
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kom-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kom-proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
 
 {{ end }}

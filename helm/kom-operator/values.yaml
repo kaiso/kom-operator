@@ -6,6 +6,10 @@ replicaCount: 1
 # Specifies the namespace to be watched by the operator, default is watching all namespaces.
 watchNamespace: ""
 
+# Specifies the operator namespace
+namespace:
+  name: "kom-operator"
+  create: true
 
 serviceAccount:
   # Specifies whether a service account should be created

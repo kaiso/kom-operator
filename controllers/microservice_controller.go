@@ -31,7 +31,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-playground/validator/v10"
@@ -71,6 +73,11 @@ func NewReconciler(mgr ctrl.Manager) *MicroserviceReconciler {
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=autoscaling,resources=*,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=*,resources=services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=extensions,resources=ingresses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=extensions,resources=ingresses/status,verbs=update
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,ingressclasses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses/status,verbs=update
+
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -378,12 +385,16 @@ func (r *MicroserviceReconciler) udpateStatus(instance *komv1alpha1.Microservice
 		Status:     stampedStatus,
 		Routing:    instance.Spec.Container.Routing,
 	}
-	instance.Status = status
-	err = r.Client.Status().Update(context.Background(), instance)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update Resource status ")
+	if !reflect.DeepEqual(instance.Status.Routing, status.Routing) || instance.Status.Status != status.Status {
+		reqLogger.Info("Status has changed, updating...")
+		instance.Status = status
+		err = r.Client.Status().Update(context.Background(), instance)
+		if err != nil {
+			reqLogger.Error(err, "Failed to update Resource status ")
+		}
+		return err
 	}
-	return err
+	return nil
 }
 
 func (r *MicroserviceReconciler) isValid(obj metav1.Object) (bool, error) {
@@ -399,6 +410,16 @@ func (r *MicroserviceReconciler) isValid(obj metav1.Object) (bool, error) {
 	return true, nil
 }
 
+func ignoreStatusUpdatePredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Ignore updates to CR status in which case metadata.Generation does not change
+			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() ||
+				!reflect.DeepEqual(e.ObjectOld.GetFinalizers(), e.ObjectNew.GetFinalizers())
+		},
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *MicroserviceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
@@ -408,6 +429,7 @@ func (r *MicroserviceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&komv1alpha1.Microservice{}).
-		Owns(&appsv1.Deployment{}).
+		//Owns(&appsv1.Deployment{}).
+		WithEventFilter(ignoreStatusUpdatePredicate()).
 		Complete(r)
 }

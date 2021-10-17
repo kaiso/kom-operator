@@ -1,23 +1,29 @@
 {{ if .Values.rbac.create }}
 
-# roles bindings
-
-kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
 metadata:
-  name: kaiso:kom-operator
-  namespace: kube-system
+  name: kom-operator-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kom-operator
 subjects:
 - kind: ServiceAccount
   name: kom-operator
-  namespace: kube-system
+  namespace: "{{.Values.namespace.name }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kom-proxy-rolebinding
 roleRef:
-  kind: ClusterRole
-  name: kom-operator
   apiGroup: rbac.authorization.k8s.io
-
-
-# end of role bindings
-
+  kind: ClusterRole
+  name: kom-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: kom-operator
+  namespace: "{{.Values.namespace.name }}"
 
 {{ end }}
