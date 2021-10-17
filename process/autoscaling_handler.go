@@ -3,13 +3,14 @@ package process
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	"k8s.io/api/autoscaling/v2beta2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -107,12 +108,12 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 		switch inputScaler.Resource {
 		case komv1alpha1.CPU:
 			resource = corev1.ResourceCPU
-			if instance.Spec.Container.Limits == nil || instance.Spec.Container.Limits.Cpu().IsZero() {
+			if instance.Spec.Container.Resources.Limits == nil || instance.Spec.Container.Resources.Limits.Cpu().IsZero() {
 				return nil, errors.NewBadRequest(fmt.Sprintf("Invalid AutoScaler configuration for deployment %v, you must specify CPU Limits at container level", deployment.Name))
 			}
 		case komv1alpha1.Memory:
 			resource = corev1.ResourceMemory
-			if instance.Spec.Container.Limits == nil || instance.Spec.Container.Limits.Memory().IsZero() {
+			if instance.Spec.Container.Resources.Limits == nil || instance.Spec.Container.Resources.Limits.Memory().IsZero() {
 				return nil, errors.NewBadRequest(fmt.Sprintf("Invalid AutoScaler configuration for deployment %v, you must specify Memory Limits at container level", deployment.Name))
 			}
 		default:

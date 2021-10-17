@@ -81,13 +81,13 @@ type Container struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
-	Image           string               `json:"image"`
-	Command         []string             `json:"command,omitempty"`
-	Args            []string             `json:"args,omitempty"`
-	Routing         Routing              `json:"routing,omitempty"`
-	ImagePullPolicy corev1.PullPolicy    `json:"imagePullPolicy,omitempty"`
-	VolumeMounts    []corev1.VolumeMount `json:"volumeMounts,omitempty"`
-	Limits          corev1.ResourceList  `json:"limits,omitempty"`
+	Image           string                      `json:"image"`
+	Command         []string                    `json:"command,omitempty"`
+	Args            []string                    `json:"args,omitempty"`
+	Routing         Routing                     `json:"routing,omitempty"`
+	ImagePullPolicy corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
+	VolumeMounts    []corev1.VolumeMount        `json:"volumeMounts,omitempty"`
+	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // MicroserviceSpec defines the desired state of Microservice

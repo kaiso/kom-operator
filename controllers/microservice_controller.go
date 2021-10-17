@@ -270,15 +270,12 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image:        cr.Spec.Container.Image,
-						Name:         cr.Name,
-						Command:      cr.Spec.Container.Command,
-						Args:         cr.Spec.Container.Args,
-						VolumeMounts: cr.Spec.Container.VolumeMounts,
-						Resources: corev1.ResourceRequirements{
-							Limits:   cr.Spec.Container.Limits,
-							Requests: cr.Spec.Container.Limits,
-						},
+						Image:           cr.Spec.Container.Image,
+						Name:            cr.Name,
+						Command:         cr.Spec.Container.Command,
+						Args:            cr.Spec.Container.Args,
+						VolumeMounts:    cr.Spec.Container.VolumeMounts,
+						Resources:       cr.Spec.Container.Resources,
 						ImagePullPolicy: cr.Spec.Container.ImagePullPolicy,
 					}},
 					Volumes:            cr.Spec.Volumes,
@@ -350,7 +347,7 @@ func hasChanges(instance *komv1alpha1.Microservice, existingDeployment *appsv1.D
 				//fmt.Printf("not found  %T %v\n", instance.Spec.Args, instance.Spec.Args)
 				if !reflect.DeepEqual(instance.Spec.Container.Args, container.Args) ||
 					!reflect.DeepEqual(instance.Spec.Container.Command, container.Command) ||
-					!reflect.DeepEqual(instance.Spec.Container.Limits, container.Resources.Limits) {
+					!reflect.DeepEqual(instance.Spec.Container.Resources, container.Resources) {
 					deploymentChanged = true
 				}
 			}
