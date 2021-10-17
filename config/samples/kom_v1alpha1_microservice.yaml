@@ -1,0 +1,7 @@
+apiVersion: kom.kaiso.github.io/v1alpha1
+kind: Microservice
+metadata:
+  name: microservice-sample
+spec:
+  # Add fields here
+  foo: bar
