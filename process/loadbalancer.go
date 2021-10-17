@@ -209,7 +209,7 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: "kom-operator-controller-manager",
+					ServiceAccountName: "kom-operator",
 					Containers: []corev1.Container{{
 						Image: traefikImage,
 						Name:  name,
