@@ -191,7 +191,7 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		"provider": "kom-operator",
 	}
 
-	var replicas int32 = 1
+	var replicas int32 = 3
 	lb.Deployment = appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,

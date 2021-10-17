@@ -34,6 +34,12 @@ type API struct {
 	Debug     bool `json:"debug"`
 }
 
+// API holds the API configuration.
+type Pilot struct {
+	Token     bool `json:"token"`
+	Dashboard bool `json:"dashboard,omitempty"`
+}
+
 // Metrics provides options to expose and send Traefik metrics to different third party monitoring systems.
 type Metrics struct {
 	Prometheus *Prometheus `description:"Prometheus metrics exporter type." json:"prometheus,omitempty" export:"true" label:"allowEmpty"`
@@ -101,6 +107,7 @@ type TraefikConfig struct {
 	Metrics          Metrics               `json:"metrics,omitempty"`
 	Providers        Providers             `json:"providers,omitempty"`
 	Http             Http                  `json:"http,omitempty"`
+	Pilot            Pilot                 `json:"pilot,omitempty"`
 }
 
 //NewTraefikConfig constructs a new configuration for traefik loadbalancer
@@ -150,6 +157,9 @@ func NewTraefikConfig() TraefikConfig {
 				DialTimeout:           "300s",
 				ResponseHeaderTimeout: "300s",
 			},
+		},
+		Pilot: Pilot{
+			Dashboard: false,
 		},
 	}
 }
