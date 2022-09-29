@@ -115,6 +115,12 @@ func (lb *LoadBalancer) Start(context.Context) error {
 
 	var cfg = NewTraefikConfig()
 
+	if len(util.GetLoadbalancerPublishedService()) != 0 {
+		cfg.Providers.KubernetesIngress.IngressEndpoint = &EndpointIngress{
+			PublishedService: util.GetLoadbalancerPublishedService(),
+		}
+	}
+
 	if len(lb.Config.Data) == 0 {
 		lbLogger.Info(fmt.Sprintf("Creating the KOM LoadBalancer configuration "))
 		err = lb.writeConfig(cfg, false)
@@ -125,6 +131,11 @@ func (lb *LoadBalancer) Start(context.Context) error {
 	}
 
 	err = lb.deployLoadBalancer()
+	if err != nil {
+		panic(err.Error())
+	}
+
+	err = lb.deployLoadBalancerService()
 	if err != nil {
 		panic(err.Error())
 	}
@@ -160,7 +171,7 @@ func (lb LoadBalancer) findExistingObject(name string, namespace string, obj met
 	err := mgr.GetClient().Get(lb.Context, key, obj.(crclient.Object))
 	switch {
 	case err == nil:
-		if lb.Owner != nil {
+		/*if lb.Owner != nil {
 			for _, existingOwner := range obj.GetOwnerReferences() {
 				if existingOwner.Name == lb.Owner.Name {
 					found = true
@@ -169,11 +180,12 @@ func (lb LoadBalancer) findExistingObject(name string, namespace string, obj met
 		} else {
 			found = true
 		}
-		if found {
-			lbLogger.Info(fmt.Sprintf("Found existing Object [%v], the KOM operator was likely restarted.", obj.GetName()))
-		} else {
-			lbLogger.Info(fmt.Sprintf("No pre-existing Object [%v] was found.", name))
-		}
+		if found {*/
+		found = true
+		lbLogger.Info(fmt.Sprintf("Found existing Object [%v], the KOM operator was likely restarted.", obj.GetName()))
+	/*	} else {
+		lbLogger.Info(fmt.Sprintf("No pre-existing Object [%v] was found.", name))
+	}*/
 	case apierrors.IsNotFound(err):
 		lbLogger.Info(fmt.Sprintf("API error NotFound, No pre-existing Object [%v] was found.", name))
 	default:
@@ -191,7 +203,8 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		"provider": "kom-operator",
 	}
 
-	var replicas int32 = 3
+	var replicas = int32(util.GetLoadbalancerReplicaCount())
+
 	lb.Deployment = appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -249,6 +262,41 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		},
 	}
 
+	if lb.Owner != nil {
+		lb.Deployment.OwnerReferences = []metav1.OwnerReference{*lb.Owner}
+	}
+
+	f, err := lb.findExistingObject(lb.Deployment.Name, lb.Deployment.Namespace, &lb.Deployment)
+	if err != nil {
+		lbLogger.Error(err, "Error retrieving loadbalancer deployment")
+		panic(err.Error())
+	}
+	if f == false {
+		lbLogger.Info(fmt.Sprintf("Creating the KOM LoadBalancer..."))
+		err = (*lb.Manager).GetClient().Create(lb.Context, &lb.Deployment)
+		if err != nil {
+			panic(err.Error())
+		}
+		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was created "))
+	} else {
+		lbLogger.Info(fmt.Sprintf("Updating the KOM LoadBalancer..."))
+		err = (*lb.Manager).GetClient().Update(lb.Context, &lb.Deployment)
+		if err != nil {
+			panic(err.Error())
+		}
+		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was updated "))
+	}
+
+	return nil
+}
+
+func (lb *LoadBalancer) deployLoadBalancerService() error {
+	var name = "kom-loadbalancer"
+	labels := map[string]string{
+		"app":      name,
+		"provider": "kom-operator",
+	}
+
 	var service = &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -274,51 +322,26 @@ func (lb *LoadBalancer) deployLoadBalancer() error {
 		},
 	}
 
-	if lb.Owner != nil {
-		lb.Deployment.OwnerReferences = []metav1.OwnerReference{*lb.Owner}
-	}
-
-	f, err := lb.findExistingObject(lb.Deployment.Name, lb.Deployment.Namespace, &lb.Deployment)
+	existingService := &corev1.Service{}
+	err := (*lb.Manager).GetClient().Get(lb.Context, types.NamespacedName{
+		Name:      lb.Deployment.Name,
+		Namespace: lb.Deployment.Namespace,
+	}, existingService)
 	if err != nil {
-		lbLogger.Error(err, "Error retrieving loadbalancer deployment")
-		panic(err.Error())
-	}
-	if f == false {
-		lbLogger.Info(fmt.Sprintf("Creating the KOM LoadBalancer..."))
-		err = (*lb.Manager).GetClient().Create(lb.Context, &lb.Deployment)
-		if err != nil {
-			panic(err.Error())
-		}
-		err = (*lb.Manager).GetClient().Create(lb.Context, service)
-		if err != nil {
-			panic(err.Error())
-		}
-		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was created "))
-	} else {
-		lbLogger.Info(fmt.Sprintf("Updating the KOM LoadBalancer..."))
-		err = (*lb.Manager).GetClient().Update(lb.Context, &lb.Deployment)
-		if err != nil {
-			panic(err.Error())
-		}
-		existingService := &corev1.Service{}
-		err := (*lb.Manager).GetClient().Get(lb.Context, types.NamespacedName{
-			Name:      lb.Deployment.Name,
-			Namespace: lb.Deployment.Namespace,
-		}, existingService)
-		if err != nil {
-			lbLogger.Error(err, "Error retrieving the KOM LoadBalancer service, this is likely due to a manual intervention! "+
-				"The KOM Operator will create a new service, dependening on your cloud provider this may create a new loadbalancer endpoint ")
+		if apierrors.IsNotFound(err) {
+			lbLogger.Info("No pre-existing loadbalancer service, creating...")
 			existingService = service
 			err = (*lb.Manager).GetClient().Create(lb.Context, existingService)
 			if err != nil {
 				panic(err.Error())
 			}
+			lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer service has been created."))
 		} else {
-			lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer service was already created. Skipping service creation... "))
+			panic(err.Error())
 		}
-		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer was updated "))
+	} else {
+		lbLogger.Info(fmt.Sprintf("The KOM LoadBalancer service was already created. Skipping service creation... "))
 	}
-
 	return nil
 }
 

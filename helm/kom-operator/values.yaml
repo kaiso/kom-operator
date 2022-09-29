@@ -6,6 +6,12 @@ replicaCount: 1
 # Specifies the namespace to be watched by the operator, default is watching all namespaces.
 watchNamespace: ""
 
+# Load balancer configuration
+loadbalancer:
+  # the service of the created loadbalancer used to update Ingress status in form of (namespace/service)
+  publishedService: ""
+  replicaCount: 1
+
 # Specifies the operator namespace
 namespace:
   name: "kom-operator"
@@ -16,6 +22,10 @@ serviceAccount:
   create: true
 
 rbac:
+  # Specifies whether the rbac should be applied
+  create: true
+
+crds:
   # Specifies whether the rbac should be applied
   create: true
 

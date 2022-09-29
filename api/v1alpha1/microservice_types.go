@@ -95,10 +95,12 @@ type MicroserviceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Container          Container                `json:"container"`
-	Autoscaling        MicroservicesAutoscaling `json:"autoscaling,omitempty"`
-	Volumes            []corev1.Volume          `json:"volumes,omitempty"`
-	ServiceAccountName string                   `json:"serviceAccountName,omitempty"`
+	Container          Container                  `json:"container"`
+	Autoscaling        MicroservicesAutoscaling   `json:"autoscaling,omitempty"`
+	Volumes            []corev1.Volume            `json:"volumes,omitempty"`
+	ServiceAccountName string                     `json:"serviceAccountName,omitempty"`
+	NodeSelector       map[string]string          `json:"nodeSelector,omitempty" protobuf:"bytes,7,rep,name=nodeSelector"`
+	SecurityContext    *corev1.PodSecurityContext `json:"securityContext,omitempty" protobuf:"bytes,15,opt,name=securityContext"`
 }
 
 // MicroserviceStatus defines the observed state of Microservice

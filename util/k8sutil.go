@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -48,6 +49,13 @@ const (
 	// PodNameEnvVar is the constant for env variable POD_NAME
 	// which is the name of the current pod.
 	PodNameEnvVar = "POD_NAME"
+
+	// LoadbalancerPublishedService is the loadbalancer service in format namespace/service
+	// used to update the Ingresses with its endpoint.
+	LoadbalancerPublishedServiceVar = "LOADBALANCER_PUBLISHED_SERVICE"
+
+	// LoadbalancerReplicaCountVar is the loadbalancer number of replicas
+	LoadbalancerReplicaCountVar = "LOADBALANCER_REPLICA_COUNT"
 )
 
 var log = logf.Log.WithName("k8sutil")
@@ -59,6 +67,30 @@ func GetWatchNamespace() (string, error) {
 		return "", fmt.Errorf("%s must be set", WatchNamespaceEnvVar)
 	}
 	return ns, nil
+}
+
+// GetLoadbalancerPublishedService returns the the loadbalancer service in format namespace/service used to update the Ingresses with its endpoint
+func GetLoadbalancerPublishedService() string {
+	ns, found := os.LookupEnv(LoadbalancerPublishedServiceVar)
+	if !found {
+		return ""
+	}
+	return ns
+}
+
+// GetLoadbalancerReplicaCount returns the the loadbalancer number of replicas
+func GetLoadbalancerReplicaCount() int {
+	replicas, found := os.LookupEnv(LoadbalancerReplicaCountVar)
+	if !found {
+		log.V(1).Info(fmt.Sprintf("No %s  variable found, using default value 1", LoadbalancerReplicaCountVar))
+		return 1
+	}
+	number, err := strconv.Atoi(replicas)
+	if err != nil {
+		log.V(1).Info(fmt.Sprintf("Invalied %s  variable value, using default value 1", LoadbalancerReplicaCountVar), "Error", err)
+		return 1
+	}
+	return number
 }
 
 // ErrNoNamespace indicates that a namespace could not be found for the current

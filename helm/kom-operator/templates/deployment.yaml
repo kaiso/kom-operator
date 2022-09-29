@@ -45,7 +45,7 @@ metadata:
   name: kom-operator
   namespace: "{{.Values.namespace.name }}"
 spec:
-  replicas: 1
+  replicas: {{.Values.replicaCount | default 1 }}
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -77,6 +77,10 @@ spec:
           value: "false"
         - name: WATCH_NAMESPACE
           value: "{{ .Values.watchNamespace }}"
+        - name: LOADBALANCER_PUBLISHED_SERVICE
+          value: "{{ .Values.loadbalancer.publishedService }}"
+        - name: LOADBALANCER_REPLICA_COUNT
+          value: "{{ .Values.loadbalancer.replicaCount }}"
         - name: POD_NAME
           valueFrom:
             fieldRef:

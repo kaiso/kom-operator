@@ -71,13 +71,12 @@ func NewReconciler(mgr ctrl.Manager) *MicroserviceReconciler {
 //+kubebuilder:rbac:groups=kom.kaiso.github.io,resources=microservices/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=coordination.k8s.io,resources=*,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=autoscaling,resources=*,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=*,resources=services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=extensions,resources=ingresses,verbs=get;list;watch
-//+kubebuilder:rbac:groups=extensions,resources=ingresses/status,verbs=update
-//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,ingressclasses,verbs=get;list;watch
-//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses/status,verbs=update
-
+//+kubebuilder:rbac:groups=traefik.containo.us,resources=middlewares;middlewaretcps;ingressroutes;traefikservices;ingressroutetcps;ingressrouteudps;tlsoptions;tlsstores;serverstransports,verbs=get;list;watch
+//+kubebuilder:rbac:groups=extensions;networking.k8s.io,resources=ingresses;ingressclasses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=extensions;networking.k8s.io,resources=ingresses/status,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -276,6 +275,8 @@ func getInstanceObjects(cr *komv1alpha1.Microservice) (*appsv1.Deployment, *core
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
+					SecurityContext: cr.Spec.SecurityContext,
+					NodeSelector:    cr.Spec.NodeSelector,
 					Containers: []corev1.Container{{
 						Image:           cr.Spec.Container.Image,
 						Name:            cr.Name,

@@ -172,6 +172,11 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 		minReplicas := instance.Spec.Autoscaling.Min
 		maxReplicas := instance.Spec.Autoscaling.Max
 
+		var kind = "Deployment"
+		if deployment.Kind != "" {
+			kind = deployment.Kind
+		}
+
 		scaler := &v2beta2.HorizontalPodAutoscaler{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "HorizontalPodAutoscaler",
@@ -185,7 +190,7 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 			Spec: v2beta2.HorizontalPodAutoscalerSpec{
 				ScaleTargetRef: v2beta2.CrossVersionObjectReference{
 					APIVersion: deployment.APIVersion,
-					Kind:       deployment.Kind,
+					Kind:       kind,
 					Name:       deployment.Name,
 				},
 				MinReplicas: &minReplicas,

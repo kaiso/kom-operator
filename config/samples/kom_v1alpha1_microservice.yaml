@@ -1,7 +1,54 @@
 apiVersion: kom.kaiso.github.io/v1alpha1
 kind: Microservice
 metadata:
-  name: microservice-sample
+    name: kom-nginx
+    namespace: system
+    labels:
+        deploymentName: kaiso-nginx
 spec:
-  # Add fields here
-  foo: bar
+  nodeSelector:
+    kubernetes.io/os: linux
+  container:
+    image: nginx:latest
+    args:
+        - 'nginx-debug'
+        -  '-g'
+        - 'daemon off;'
+    routing:
+          http:
+            - port: 
+                containerPort: 8019
+                name: "https"
+              rule: "PathPrefix(`/nginxhttps`)"
+            - port: 
+                containerPort: 80
+                name: "http"
+              rule: "Host(`nginx.kaiso.local`)"
+    volumeMounts:
+            - mountPath: /var/log/
+              name: logvolume
+            - mountPath: /usr/share/nginx/html/
+              name: contentvolume
+    resources:
+      requests:
+          memory: 50Mi
+          cpu: 100m
+      limits:
+          memory: 200Mi
+          cpu: 500m
+  autoscaling:
+      min: 2
+      max: 5
+      scaler:
+          - resource: CPU
+            type: Utilization
+            value: "75"
+  volumes:
+      - name: logvolume
+        hostPath:
+            path: /Volumes/DATA/tmp/log/
+            type: DirectoryOrCreate
+      - name: contentvolume
+        hostPath:
+            path: /Volumes/DATA/tmp/mdrn/engine/buildprod/
+            type: DirectoryOrCreate

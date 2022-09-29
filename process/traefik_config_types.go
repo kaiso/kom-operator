@@ -53,11 +53,44 @@ type Prometheus struct {
 	EntryPoint           string    `json:"entryPoint"`
 }
 
+// Kubernetes CRD provider holds configurations of the provider.
+type KubernetesCRDProvider struct {
+	Endpoint                  string   `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Token                     string   `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
+	CertAuthFilePath          string   `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
+	Namespaces                []string `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
+	AllowCrossNamespace       bool     `description:"Allow cross namespace resource reference." json:"allowCrossNamespace,omitempty" toml:"allowCrossNamespace,omitempty" yaml:"allowCrossNamespace,omitempty" export:"true"`
+	AllowExternalNameServices bool     `description:"Allow ExternalName services." json:"allowExternalNameServices,omitempty" toml:"allowExternalNameServices,omitempty" yaml:"allowExternalNameServices,omitempty" export:"true"`
+	LabelSelector             string   `description:"Kubernetes label selector to use." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
+	IngressClass              string   `description:"Value of kubernetes.io/ingress.class annotation to watch for." json:"ingressClass,omitempty" toml:"ingressClass,omitempty" yaml:"ingressClass,omitempty" export:"true"`
+}
+
+// EndpointIngress holds the endpoint information for the Kubernetes provider.
+type EndpointIngress struct {
+	IP               string `description:"IP used for Kubernetes Ingress endpoints." json:"ip,omitempty" toml:"ip,omitempty" yaml:"ip,omitempty"`
+	Hostname         string `description:"Hostname used for Kubernetes Ingress endpoints." json:"hostname,omitempty" toml:"hostname,omitempty" yaml:"hostname,omitempty"`
+	PublishedService string `description:"Published Kubernetes Service to copy status from." json:"publishedService,omitempty" toml:"publishedService,omitempty" yaml:"publishedService,omitempty"`
+}
+
+// Kubernetes Ingress provider holds configurations of the provider.
+type KubernetesIngressProvider struct {
+	Endpoint                  string           `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Token                     string           `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
+	CertAuthFilePath          string           `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
+	Namespaces                []string         `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
+	LabelSelector             string           `description:"Kubernetes Ingress label selector to use." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
+	IngressClass              string           `description:"Value of kubernetes.io/ingress.class annotation or IngressClass name to watch for." json:"ingressClass,omitempty" toml:"ingressClass,omitempty" yaml:"ingressClass,omitempty" export:"true"`
+	IngressEndpoint           *EndpointIngress `description:"Kubernetes Ingress Endpoint." json:"ingressEndpoint,omitempty" toml:"ingressEndpoint,omitempty" yaml:"ingressEndpoint,omitempty" export:"true"`
+	AllowEmptyServices        bool             `description:"Allow creation of services without endpoints." json:"allowEmptyServices,omitempty" toml:"allowEmptyServices,omitempty" yaml:"allowEmptyServices,omitempty" export:"true"`
+	AllowExternalNameServices bool             `description:"Allow ExternalName services." json:"allowExternalNameServices,omitempty" toml:"allowExternalNameServices,omitempty" yaml:"allowExternalNameServices,omitempty" export:"true"`
+}
+
 // Providers holds providers configuration
 type Providers struct {
-	ProvidersThrottleDuration string                 `json:"providersThrottleDuration"`
-	File                      map[string]interface{} `json:"file"`
-	KubernetesIngress         interface{}            `json:"kubernetesIngress"`
+	ProvidersThrottleDuration string                    `json:"providersThrottleDuration"`
+	File                      map[string]interface{}    `json:"file"`
+	KubernetesIngress         KubernetesIngressProvider `json:"kubernetesIngress"`
+	KubernetesCRD             KubernetesCRDProvider     `json:"kubernetesCRD,omitempty"`
 }
 
 // Router holds the router config
@@ -150,7 +183,12 @@ func NewTraefikConfig() TraefikConfig {
 				"watch":    true,
 				"filename": "/etc/traefik/traefik.yaml",
 			},
-			KubernetesIngress: struct{}{},
+			KubernetesIngress: KubernetesIngressProvider{
+				IngressClass: "kom-operator",
+			},
+			KubernetesCRD: KubernetesCRDProvider{
+				IngressClass: "kom-operator",
+			},
 		},
 		ServersTransport: ServersTransport{
 			ForwardingTimeouts: STForwardingTimeouts{

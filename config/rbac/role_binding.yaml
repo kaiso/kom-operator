@@ -5,8 +5,8 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kom-operator
+  name: kom-manager-role
 subjects:
 - kind: ServiceAccount
   name: kom-operator
-  namespace: system
+  namespace: kom-operator
