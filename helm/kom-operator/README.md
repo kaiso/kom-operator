@@ -52,7 +52,7 @@ _See [helm upgrade](https://helm.sh/docs/helm/helm_upgrade/) for command documen
 
 ## Configuration
 
-See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments, visit the chart's [values.yaml](./values.yaml), or run these configuration commands:
+See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments, visit the chart's [values.yaml](https://artifacthub.io/packages/helm/kaiso/kom-operator?modal=values), or run these configuration commands:
 
 ```console
 # Helm 2
@@ -61,6 +61,13 @@ $ helm inspect values kaiso/kom-operator
 # Helm 3
 $ helm show values kaiso/kom-operator
 ```
+
+## Release history
+### v2.2.0
+Compatibility kubernetes version > 1.16
+### v2.1.3
+Compatibility kubernetes version < 1.16
+
 
 # LICENSE
 

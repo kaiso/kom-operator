@@ -65,7 +65,7 @@ var annotations = map[string]string{
 	"creator": "kom-operator.kaiso.github.io/" + version.Version,
 }
 
-//GetInstance returns the LoadBalancer singleton
+// GetInstance returns the LoadBalancer singleton
 func GetInstance() *LoadBalancer {
 	return instance
 }
@@ -76,7 +76,7 @@ func (*LoadBalancer) NeedLeaderElection() bool {
 	return true
 }
 
-//InitLoadBalancer LoadBalancer constructor
+// InitLoadBalancer LoadBalancer constructor
 func InitLoadBalancer(ctx context.Context, name string, mgr manager.Manager) error {
 
 	once.Do(func() {

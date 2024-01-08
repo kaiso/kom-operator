@@ -33,9 +33,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	komv1alpha1 "github.com/kaiso/kom-operator/api/v1alpha1"
-	"github.com/kaiso/kom-operator/controllers"
+	controllers "github.com/kaiso/kom-operator/internal/controller"
 	"github.com/kaiso/kom-operator/process"
 	"github.com/kaiso/kom-operator/util"
 	"github.com/kaiso/kom-operator/version"
@@ -76,8 +77,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "01825d50.kaiso.github.io",

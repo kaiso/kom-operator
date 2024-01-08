@@ -11,7 +11,7 @@ import (
 
 var mutex *sync.Mutex = &sync.Mutex{}
 
-//CreateRouter creates a router in the loadBalancer
+// CreateRouter creates a router in the loadBalancer
 func (lb *LoadBalancer) CreateRouter(namespace string, service string, routes map[int32]string) error {
 
 	mutex.Lock()
@@ -110,7 +110,7 @@ func (lb *LoadBalancer) CreateRouter(namespace string, service string, routes ma
 	return nil
 }
 
-//RemoveRouter removes a router from the loadBalancer
+// RemoveRouter removes a router from the loadBalancer
 func (lb *LoadBalancer) RemoveRouter(namespace string, service string, reload bool) error {
 
 	mutex.Lock()

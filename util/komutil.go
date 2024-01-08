@@ -38,13 +38,13 @@ const (
 	ClusterRunMode RunModeType = "cluster"
 )
 
-//PrettyPrint print a struct in json with indentation
+// PrettyPrint print a struct in json with indentation
 func PrettyPrint(i interface{}) string {
 	s, _ := json.MarshalIndent(i, "", "\t")
 	return fmt.Sprintf(string(s))
 }
 
-//Equals checks object equality
+// Equals checks object equality
 func Equals(a, b komv1alpha1.Routing) bool {
 	if &a == &b {
 		return true
@@ -70,7 +70,7 @@ func Equals(a, b komv1alpha1.Routing) bool {
 	return true
 }
 
-//ContainsString Helper functions to check string from a slice of strings.
+// ContainsString Helper functions to check string from a slice of strings.
 func ContainsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
@@ -80,7 +80,7 @@ func ContainsString(slice []string, s string) bool {
 	return false
 }
 
-//RemoveString Helper functions to remove string from a slice of strings.
+// RemoveString Helper functions to remove string from a slice of strings.
 func RemoveString(slice []string, s string) (result []string) {
 	for _, item := range slice {
 		if item == s {

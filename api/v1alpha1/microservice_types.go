@@ -21,7 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-//Status reports status of the reconcile
+// Status reports status of the reconcile
 type Status string
 
 // Resource defines the resouce targeted by a Scaler

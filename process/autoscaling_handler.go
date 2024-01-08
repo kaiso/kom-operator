@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"k8s.io/api/autoscaling/v2beta2"
+	autoscaling "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,7 +34,7 @@ type AutoScalingHandler struct {
 // Run handles autoscaling for a deployment
 func (h *AutoScalingHandler) Run(instance *komv1alpha1.Microservice, deployment *appsv1.Deployment) {
 	log.Info(fmt.Sprintf("Handling AutoScaling for %v %v.%v...", deployment.Kind, deployment.Namespace, deployment.Name))
-	hpa := v2beta2.HorizontalPodAutoscaler{}
+	hpa := autoscaling.HorizontalPodAutoscaler{}
 	exists := true
 	namespacedName := client.ObjectKey{
 		Name:      deployment.Name,
@@ -99,12 +99,12 @@ func (h *AutoScalingHandler) Run(instance *komv1alpha1.Microservice, deployment 
 	}
 }
 
-func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instance *komv1alpha1.Microservice) (*v2beta2.HorizontalPodAutoscaler, error) {
+func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instance *komv1alpha1.Microservice) (*autoscaling.HorizontalPodAutoscaler, error) {
 
-	var metrics []v2beta2.MetricSpec
+	var metrics []autoscaling.MetricSpec
 	for _, inputScaler := range instance.Spec.Autoscaling.Scaler {
 		var resource corev1.ResourceName
-		var target v2beta2.MetricTarget
+		var target autoscaling.MetricTarget
 		switch inputScaler.Resource {
 		case komv1alpha1.CPU:
 			resource = corev1.ResourceCPU
@@ -126,8 +126,8 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 			if err != nil {
 				return nil, errors.NewBadRequest(fmt.Sprintf("Invalid Scaler Value: %v for deployment %v, error: %v", inputScaler.Value, deployment.Name, err.Error()))
 			}
-			target = v2beta2.MetricTarget{
-				Type:         v2beta2.AverageValueMetricType,
+			target = autoscaling.MetricTarget{
+				Type:         autoscaling.AverageValueMetricType,
 				AverageValue: &targetValue,
 			}
 		case komv1alpha1.Value:
@@ -136,8 +136,8 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 				return nil, errors.NewBadRequest(fmt.Sprintf("Invalid Scaler Value: %v for deployment %v, error: %v", inputScaler.Value, deployment.Name, err.Error()))
 			}
 
-			target = v2beta2.MetricTarget{
-				Type:  v2beta2.ValueMetricType,
+			target = autoscaling.MetricTarget{
+				Type:  autoscaling.ValueMetricType,
 				Value: &targetValue,
 			}
 		case komv1alpha1.Utilization:
@@ -149,16 +149,16 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 			if targetValue <= 0 || targetValue > 100 {
 				return nil, errors.NewBadRequest(fmt.Sprintf("Invalid Scaler Value: %v for deployment %v should be a pourcentage", inputScaler.Value, deployment.Name))
 			}
-			target = v2beta2.MetricTarget{
-				Type:               v2beta2.UtilizationMetricType,
+			target = autoscaling.MetricTarget{
+				Type:               autoscaling.UtilizationMetricType,
 				AverageUtilization: &targetValue,
 			}
 		default:
 			return nil, errors.NewBadRequest(fmt.Sprintf("Unsupported Scaler Type [%v] in AutoScaling ", inputScaler.Type))
 		}
-		metrics = append(metrics, v2beta2.MetricSpec{
-			Type: v2beta2.ResourceMetricSourceType,
-			Resource: &v2beta2.ResourceMetricSource{
+		metrics = append(metrics, autoscaling.MetricSpec{
+			Type: autoscaling.ResourceMetricSourceType,
+			Resource: &autoscaling.ResourceMetricSource{
 				Name:   resource,
 				Target: target,
 			},
@@ -177,18 +177,18 @@ func (h *AutoScalingHandler) createScaler(deployment *appsv1.Deployment, instanc
 			kind = deployment.Kind
 		}
 
-		scaler := &v2beta2.HorizontalPodAutoscaler{
+		scaler := &autoscaling.HorizontalPodAutoscaler{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "HorizontalPodAutoscaler",
-				APIVersion: "autoscaling/v2beta2",
+				APIVersion: "autoscaling/v2",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        deployment.Name,
 				Namespace:   deployment.Namespace,
 				Annotations: annotations,
 			},
-			Spec: v2beta2.HorizontalPodAutoscalerSpec{
-				ScaleTargetRef: v2beta2.CrossVersionObjectReference{
+			Spec: autoscaling.HorizontalPodAutoscalerSpec{
+				ScaleTargetRef: autoscaling.CrossVersionObjectReference{
 					APIVersion: deployment.APIVersion,
 					Kind:       kind,
 					Name:       deployment.Name,

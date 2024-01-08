@@ -143,7 +143,7 @@ type TraefikConfig struct {
 	Pilot            Pilot                 `json:"pilot,omitempty"`
 }
 
-//NewTraefikConfig constructs a new configuration for traefik loadbalancer
+// NewTraefikConfig constructs a new configuration for traefik loadbalancer
 func NewTraefikConfig() TraefikConfig {
 	return TraefikConfig{
 		Global: Global{
